@@ -1,0 +1,33 @@
+name: WorkBuddy 自动签到
+
+on:
+  schedule:
+    # 每 3 小时整点跑一次（UTC）。GitHub 在高负载时可能延迟数分钟，属正常。
+    # 注意：公开仓库超过 60 天无任何提交会被自动停用定时任务，
+    # renew_github.py 每周续期时会做一次空提交保活，无需手动干预。
+    - cron: "0 */3 * * *"
+  workflow_dispatch: {}   # 允许在 Actions 页面手动触发一次
+
+permissions:
+  contents: read
+
+jobs:
+  checkin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run check-in
+        env:
+          WB_ACCOUNTS: ${{ secrets.WB_ACCOUNTS }}
+          WB_WARN_DAYS: "7"
+          WB_NOTIFY_ON_SUCCESS: "0"
+          WB_FAIL_ON_ERROR: "0"
+        run: python checkin.py
