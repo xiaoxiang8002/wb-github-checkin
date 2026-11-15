@@ -2,10 +2,10 @@ name: WorkBuddy 自动签到
 
 on:
   schedule:
-    # 每 3 小时整点跑一次（UTC）。GitHub 在高负载时可能延迟数分钟，属正常。
+    # 北京时间每天 00:30（= UTC 前一天 16:30）。GitHub 在高负载时可能延迟数分钟，属正常。
     # 注意：公开仓库超过 60 天无任何提交会被自动停用定时任务，
     # renew_github.py 每周续期时会做一次空提交保活，无需手动干预。
-    - cron: "0 */3 * * *"
+    - cron: "30 16 * * *"
   workflow_dispatch: {}   # 允许在 Actions 页面手动触发一次
 
 permissions:

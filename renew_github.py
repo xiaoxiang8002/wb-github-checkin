@@ -214,7 +214,8 @@ def resolve_repo(arg_repo):
     try:
         r = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner",
                             "-q", ".nameWithOwner"],
-                           capture_output=True, text=True, timeout=30, encoding="utf-8")
+                           capture_output=True, text=True, timeout=30, encoding="utf-8",
+                           env=net_env())
         if r.returncode == 0 and r.stdout.strip():
             return r.stdout.strip()
     except Exception:
@@ -227,8 +228,9 @@ def push_secret(accounts, repo):
     cmd = ["gh", "secret", "set", "WB_ACCOUNTS"]
     if repo:
         cmd += ["--repo", repo]
-    r = subprocess.run(cmd, input=payload.encode("utf-8"),
-                       capture_output=True, text=True, timeout=60, encoding="utf-8")
+    r = subprocess.run(cmd, input=payload,
+                       capture_output=True, text=True, timeout=60, encoding="utf-8",
+                       env=net_env())
     if r.returncode != 0:
         print("推送 Secret 失败：")
         print(r.stderr.strip() or r.stdout.strip())
@@ -240,21 +242,22 @@ def push_secret(accounts, repo):
 def keepalive():
     """定时任务场景下给仓库留一次空提交，防止 GitHub 在 60 天无活动后自动停用 scheduled workflow。"""
     try:
+        env = net_env()
         r = subprocess.run(["git", "-C", str(HERE), "rev-parse", "--is-inside-work-tree"],
-                           capture_output=True, text=True, timeout=20, encoding="utf-8")
+                           capture_output=True, text=True, timeout=20, encoding="utf-8", env=env)
         if r.returncode != 0 or r.stdout.strip() != "true":
             return
         rr = subprocess.run(["git", "-C", str(HERE), "remote", "get-url", "origin"],
-                            capture_output=True, text=True, timeout=20, encoding="utf-8")
+                            capture_output=True, text=True, timeout=20, encoding="utf-8", env=env)
         if rr.returncode != 0 or not rr.stdout.strip():
             return
         now = dt.datetime.now(TZ8).strftime("%Y-%m-%d %H:%M")
         c = subprocess.run(["git", "-C", str(HERE), "commit", "--allow-empty",
                             "-m", "token renew %s" % now],
-                           capture_output=True, text=True, timeout=30, encoding="utf-8")
+                           capture_output=True, text=True, timeout=30, encoding="utf-8", env=env)
         if c.returncode == 0:
             subprocess.run(["git", "-C", str(HERE), "push"],
-                           capture_output=True, text=True, timeout=60, encoding="utf-8")
+                           capture_output=True, text=True, timeout=60, encoding="utf-8", env=env)
             print("keepalive：已空提交并推送（保持仓库活跃）")
     except Exception as e:
         print("keepalive 跳过：%r" % e)
@@ -268,6 +271,31 @@ def require_gh_auth():
         print(r.stderr.strip() or r.stdout.strip())
         return False
     return True
+
+
+def net_env(base=None):
+    """返回带 CuteCloud 代理的网络环境副本（仅当 127.0.0.1:7890 在监听时添加）。
+
+    本机直连 github.com 不通，必须走 CuteCloud 代理；gh/git 命令行不读 Windows
+    系统代理，只认 HTTPS_PROXY/HTTP_PROXY 环境变量。续期任务运行时若 CuteCloud
+    已连接，自动套用，否则原样放行（此时续期会失败但无副作用，token 仍有效数周）。
+    """
+    env = dict(base if base is not None else os.environ)
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(1.0)
+        up = s.connect_ex(("127.0.0.1", 7890)) == 0
+        s.close()
+    except Exception:
+        up = False
+    if up:
+        proxy = "http://127.0.0.1:7890"
+        env["HTTP_PROXY"] = proxy
+        env["HTTPS_PROXY"] = proxy
+        env["http_proxy"] = proxy
+        env["https_proxy"] = proxy
+    return env
 
 
 PS_INSTALL = r"""
